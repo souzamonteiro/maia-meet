@@ -1,2 +1,2 @@
-# maia-meet
-Maia Meet web conferencing tool.
+# Maia Meet
+Maia Cloud Lab web conferencing tool.
