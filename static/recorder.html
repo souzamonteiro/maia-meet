@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<script src="static/libmaia.js"></script>
+<script src="static/recorder.js"></script>
+
+<style type="text/css">
+    body {
+        background-color: black;
+        background: url(images/background.jpg) no-repeat center center fixed; 
+        -webkit-background-size: cover;
+        -moz-background-size: cover;
+        -o-background-size: cover;
+        background-size: cover;
+    }
+    video#videoPlayer {
+        position: absolute;
+        top: 40px;
+        max-width: 50%;
+        height: auto;
+        z-index: 20;
+    }
+    div#controls {
+        position: absolute;
+        display: inline-flex;
+        padding: 5px 4px;
+        border: 1px solid black;
+        background-color: white);
+        border-radius: 4px;
+        top: 0;
+        left: 20px;
+        z-index: 10;
+    }
+    .logo {
+        margin: 0px 10px 0px 0px;
+        vertical-align: text-bottom;
+        width: 20px;
+        height: 20px;
+    }
+    .buttonControl {
+        position: relative;
+        top: 0;
+        margin: 0px 2px 0px 0px;
+        padding: 2px 5px 2px 5px;
+        height: 20px;
+        border: 1px solid black;
+        border-radius: 4px;
+        cursor: pointer;
+        background-color: white);
+        color: #000000;
+        font-weight: normal;
+    }
+    .buttonControl:active {
+        border: 2px solid black;
+        background-color: white);
+        font-weight: bold;
+    }
+    .buttonControl:hover {
+        background-color: whitesmoke;
+    }
+    .buttonControl:disabled {
+        border: 1px solid grey;
+        background-color: white;
+        color: grey;
+    }
+</style>
+
+<div>
+    <video controls playsinline autoplay hidden id="videoPlayer"></video>
+</div>
+<div id="controls">
+    <a href="https://www.maiascript.com" target="_blank"><img class="logo" src="images/maiascript.png"></a>
+    <button class="buttonControl" id="startButton">Record</button>
+    <button class="buttonControl" id="pauseButton" disabled>Pause</button>
+    <button class="buttonControl" id="stopButton" disabled>Stop</button>
+    <button class="buttonControl" id="playButton" disabled>Play</button>
+    <button class="buttonControl" id="saveButton" disabled>Save</button>
+</div>
+<script type="text/javascript">
+    var options = {
+        startButton: 'startButton',
+        pauseButton: 'pauseButton',
+        stopButton: 'stopButton',
+        playButton: 'playButton',
+        saveButton: 'saveButton',
+        videoPlayer: 'videoPlayer',
+        fileNamePrefix: 'Screen-recording',
+        mimeType: 'video/webm'
+    };
+    var maiarecorder = new MaiaRecorder(options);
+</script>
+</html>
