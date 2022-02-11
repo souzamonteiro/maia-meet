@@ -28,6 +28,6 @@ index_file="index.html"
 if grep -q '<!--#include virtual="static\/recorder.html" -->' ${index_file}; then
     echo "MaiaRecorder already installed!"
 else
-    sed -i '/<div id="react"><\/div>/a\    <!--#include virtual="static\/recorder.html" -->' ${index_file}
+    sed -i '/<div id="react" role="main"><\/div>/a\    <!--#include virtual="static\/recorder.html" -->' ${index_file}
     echo "MaiaRecorder installed!"
 fi
