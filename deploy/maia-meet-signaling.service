@@ -1,0 +1,20 @@
+[Unit]
+Description=Maia Meet Signaling
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=maia
+Group=maia
+WorkingDirectory=/opt/maia-meet/signaling
+Environment=NODE_ENV=production
+Environment=PORT=3081
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

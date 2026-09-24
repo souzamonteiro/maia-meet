@@ -1,0 +1,6 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111; color: #eee; }
+.shell { width: min(720px, 90vw); }
+.actions { display: flex; gap: .75rem; flex-wrap: wrap; }
+button, input { font: inherit; padding: .75rem 1rem; }
+input { flex: 1 1 14rem; }
