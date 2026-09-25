@@ -1,5 +1,5 @@
 [Unit]
-Description=Maia Meet Signaling
+Description=Maia Meet HTTP and WebSocket server
 After=network-online.target
 Wants=network-online.target
 
@@ -9,7 +9,7 @@ User=maia
 Group=maia
 WorkingDirectory=/opt/maia-meet/signaling
 Environment=NODE_ENV=production
-Environment=PORT=3081
+EnvironmentFile=/etc/maia-meet/meet.env
 ExecStart=/usr/bin/node src/server.js
 Restart=on-failure
 RestartSec=2

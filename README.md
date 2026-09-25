@@ -8,6 +8,21 @@ The project intentionally does **not** depend on Jitsi Meet, Jitsi Videobridge, 
 - **Maia Signaling Server** — Node.js/WebSocket control plane for rooms, participants, SDP/ICE signaling, presence, and text chat.
 - **Maia SFU** — native C++ Linux Selective Forwarding Unit for WebRTC media transport and RTP/RTCP routing.
 
+## Run the application
+
+Requires Node.js 22+. The working small-room implementation uses **WebRTC mesh**:
+Node serves the browser client and signaling on one configurable TCP port.
+The native SFU is an experimental component and is not used by this runtime.
+
+```bash
+make configure
+make install-deps
+make signaling-start
+```
+
+Open the configured URL (default `http://localhost:3081/`). For deployment,
+TURN, Maia Edge and the Apps `/maia-meet/` path, see [the deployment guide](deploy/README.md).
+
 ## Project goals
 
 1. Keep the browser client small, understandable, and framework-free.
@@ -21,7 +36,10 @@ The project intentionally does **not** depend on Jitsi Meet, Jitsi Videobridge, 
 
 A user can create a meeting, share its URL, preview and select camera/microphone devices, join the room, see and hear other participants, mute/unmute, enable/disable video, share the screen, exchange text messages, and record locally.
 
-## Architecture
+## Target SFU architecture
+
+The diagram below describes the intended SFU architecture. The current runtime
+uses browser-to-browser WebRTC with Node.js signaling; TURN relays media when needed.
 
 ```mermaid
 flowchart TB
@@ -101,7 +119,9 @@ The media payload should remain encoded whenever possible. The SFU understands t
 
 ## Status
 
-**Pre-alpha / architecture phase.** The repository currently defines the target architecture and implementation sequence. Stub source files are included to establish module boundaries.
+**Pre-alpha.** Small-room mesh is implemented with configurable HTTP/WebSocket,
+STUN/TURN and Apps base path. The native SFU remains experimental; its conference
+media path is incomplete. Local automated browser tests exercise mesh, not the SFU.
 
 ## License
 

@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build and test the SFU (C++20)
+  # ---------------------------------------------------------------------------
+  sfu:
+    name: Maia SFU — Build (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential cmake ninja-build \
+            libssl-dev libsrtp2-dev pkg-config
+
+      - name: Configure CMake
+        run: cmake -S sfu -B build/sfu -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -G Ninja
+
+      - name: Build
+        run: cmake --build build/sfu --parallel
+
+      - name: Smoke test (binary starts)
+        run: |
+          python3 tests/sfu-smoke.py ./build/sfu/maia-sfu
+
+  # ---------------------------------------------------------------------------
+  # Lint/check the Node.js signaling server
+  # ---------------------------------------------------------------------------
+  signaling:
+    name: Maia Signaling — Integration
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: signaling/package-lock.json
+
+      - name: Install dependencies
+        run: cd signaling && npm ci
+
+      - name: HTTP and WebSocket integration tests
+        run: cd signaling && npm test
+
+      - name: Check syntax
+        run: |
+          node --check signaling/src/config.js
+          node --check signaling/src/logger.js
+          node --check signaling/src/rooms.js
+          node --check signaling/src/participants.js
+          node --check signaling/src/sfu-client.js
+          node --check signaling/src/server.js
+
+  # ---------------------------------------------------------------------------
+  # Lint the browser client JavaScript
+  # ---------------------------------------------------------------------------
+  client:
+    name: Maia Client — Syntax Check
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check JS syntax
+        run: |
+          for f in client/js/*.js; do
+            node --input-type=module --check < "$f"
+          done
+
+
+  browser:
+    name: Three-browser mesh call
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: signaling
+      - run: npm install --no-save playwright@1.63.0
+        working-directory: signaling
+      - run: npx playwright install --with-deps chromium
+        working-directory: signaling
+      - run: sudo apt-get update && sudo apt-get install -y nginx
+      - run: npm run test:browser
+        working-directory: signaling
+        env:
+          NGINX_PATH: /usr/sbin/nginx

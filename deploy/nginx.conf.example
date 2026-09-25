@@ -1,15 +1,10 @@
+# Dedicated domain example. Change domain, TLS files and listening port.
+# Generate the location using deploy/render-nginx.mjs for your HOST/PORT/BASE_PATH
+# and save it as /etc/nginx/maia-meet-location.conf.
 server {
-    listen 443 ssl http2;
-    server_name meet.example.org;
-
-    root /opt/maia-meet/client;
-    index index.html;
-
-    location /ws {
-        proxy_pass http://127.0.0.1:3081;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
+    listen 443 ssl;
+    server_name meet.example.com;
+    ssl_certificate /etc/letsencrypt/live/meet.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/meet.example.com/privkey.pem;
+    include /etc/nginx/maia-meet-location.conf;
 }

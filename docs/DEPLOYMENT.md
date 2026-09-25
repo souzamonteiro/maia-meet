@@ -1,5 +1,9 @@
 # Deployment Architecture
 
+> Current runtime: small-room WebRTC mesh. See [running and testing Meet](../deploy/README.md)
+> and [ADR 0010](adr/0010-small-room-mesh-runtime.md). The SFU sections below describe
+> the target architecture and acceptance criteria, not completed functionality.
+
 ## Single-node development/initial production
 
 ```mermaid
