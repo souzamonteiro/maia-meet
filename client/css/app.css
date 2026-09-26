@@ -127,3 +127,13 @@ h3 { font-size: 15px; }
     .preview-actions > button { flex: 1; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+[hidden] { display: none !important; }
+.meeting-info { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.meeting-info input { flex: 1; min-width: 160px; font-size: 12px; }
+.meeting-info strong { color: #c6b8ff; overflow-wrap: anywhere; }
+
+.media-play { position: absolute; top: 12px; left: 12px; z-index: 1; }
+
+.viewer-option { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; font-size: 13px; }
+.viewer-option input { width: 18px; min-height: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); }

@@ -24,7 +24,21 @@ async function init() {
     room = new RoomState();
     chat = new ChatManager();
 
-    document.getElementById('room-id').value = new URL(location.href).searchParams.get('room') || '';
+    const invitedRoom = new URL(location.href).searchParams.get('room') || '';
+    document.getElementById('room-id').value = invitedRoom;
+    if (invitedRoom) {
+        document.getElementById('btn-new-meeting').hidden = true;
+        document.getElementById('lobby-description').textContent = `Join meeting ${invitedRoom}. Enter your name below.`;
+    }
+    document.getElementById('btn-join-without-devices').addEventListener('click', () => {
+        devices.stopLocalPreview();
+        onJoinRoom();
+    });
+    document.getElementById('btn-copy-invite').addEventListener('click', async () => {
+        const input = document.getElementById('meeting-link');
+        try { await navigator.clipboard.writeText(input.value); UI.showNotification('Invitation link copied'); }
+        catch { input.focus(); input.select(); UI.showNotification('Copy the selected invitation link'); }
+    });
 
     // Lobby events
     document.getElementById('btn-new-meeting').addEventListener('click', onNewMeeting);
@@ -66,7 +80,10 @@ async function init() {
     });
 
     // Room state events
-    room.on('participantAdded', () => {
+    room.on('participantAdded', participant => {
+        if (participant.id !== room.localParticipantId && !document.getElementById(`tile-${participant.id}`)) {
+            UI.createVideoTile(participant.id, participant.displayName, null);
+        }
         UI.updateParticipantsList(room.getAllParticipants());
     });
     room.on('participantRemoved', (id) => {
@@ -91,7 +108,10 @@ async function onNewMeeting() {
 
 async function onJoinLobbyClick() {
     const name = document.getElementById('display-name').value.trim();
-    const roomId = document.getElementById('room-id').value.trim();
+    let roomId = document.getElementById('room-id').value.trim();
+    if (/^https?:\/\//.test(roomId)) {
+        try { roomId = new URL(roomId).searchParams.get('room') || ''; } catch { roomId = ''; }
+    }
 
     if (!name) return UI.showNotification('Please enter a display name', 'error');
     if (!roomId) return UI.showNotification('Please enter a room ID', 'error');
@@ -106,10 +126,31 @@ async function setupPreview(name, roomId) {
     currentRoomId = roomId;
 
     UI.showView('preview');
-    document.getElementById('btn-join-room').disabled = true;
+    const invite = new URL(location.href);
+    invite.searchParams.set('room', currentRoomId);
+    history.replaceState(null, '', invite);
+    document.getElementById('meeting-link').value = invite.href;
+    document.getElementById('meeting-room-id').textContent = currentRoomId;
+    document.getElementById('btn-join-room').disabled = false;
+    document.getElementById('device-status').textContent = 'Camera and microphone are optional. You can join while permission is pending.';
 
+    if (document.getElementById('join-as-viewer').checked) {
+        devices.stopLocalPreview();
+        isMuted = true;
+        isVideoEnabled = false;
+        UI.setMuted(true);
+        UI.setCameraEnabled(false);
+        document.getElementById('device-status').textContent = 'You will join without camera or microphone. You can enable them during the meeting.';
+        return;
+    }
     try {
         await devices.getLocalStream();
+        if (!document.getElementById('view-preview').classList.contains('active')) return;
+        isMuted = !devices.localStream.getAudioTracks().length;
+        isVideoEnabled = !!devices.localStream.getVideoTracks().length;
+        UI.setMuted(isMuted);
+        UI.setCameraEnabled(isVideoEnabled);
+        document.getElementById('device-status').textContent = 'You can join with the available devices, or without camera and microphone.';
         devices.setAudioMuted(isMuted);
         devices.setVideoEnabled(isVideoEnabled);
         document.getElementById('btn-join-room').disabled = false;
@@ -127,24 +168,43 @@ async function setupPreview(name, roomId) {
         updateAudio();
 
     } catch (err) {
-        UI.showNotification('Could not access camera/mic', 'error');
+        document.getElementById('device-status').textContent = 'Devices unavailable. You can still join and watch the meeting.';
     }
 }
 
-function toggleMute() {
-    isMuted = !isMuted;
-    devices.setAudioMuted(isMuted);
-    UI.setMuted(isMuted);
+async function toggleMute() {
+    try {
+        let track = devices.localStream.getAudioTracks()[0];
+        if (!track) {
+            track = await devices.acquireTrack('audio');
+            if (webrtc) await webrtc.replaceTrack(null, track);
+            isMuted = false;
+        } else isMuted = !isMuted;
+        devices.setAudioMuted(isMuted);
+        UI.setMuted(isMuted);
+    } catch { UI.showNotification('Microphone unavailable. You can continue listening.', 'error'); }
 }
 
-function toggleVideo() {
-    isVideoEnabled = !isVideoEnabled;
-    devices.setVideoEnabled(isVideoEnabled);
-    UI.setCameraEnabled(isVideoEnabled);
+async function toggleVideo() {
+    try {
+        let track = devices.localStream.getVideoTracks()[0];
+        if (!track) {
+            track = await devices.acquireTrack('video');
+            if (webrtc && !devices.screenStream) await webrtc.replaceTrack(null, track);
+            isVideoEnabled = true;
+        } else isVideoEnabled = !isVideoEnabled;
+        devices.setVideoEnabled(isVideoEnabled);
+        UI.setCameraEnabled(isVideoEnabled);
+        document.getElementById('local-preview-video').srcObject = devices.localStream;
+    } catch { UI.showNotification('Camera unavailable. You can continue watching.', 'error'); }
 }
 
 async function onJoinRoom() {
-    if (!devices.localStream) return;
+    devices.cancelPendingCapture();
+    isMuted = !devices.localStream.getAudioTracks().some(t => t.enabled);
+    isVideoEnabled = devices.localStream.getVideoTracks().some(t => t.enabled);
+    UI.setMuted(isMuted);
+    UI.setCameraEnabled(isVideoEnabled);
     if (devices.animationFrameId) cancelAnimationFrame(devices.animationFrameId);
     UI.showView('room');
     UI.createVideoTile('local', `${currentDisplayName} (You)`, devices.localStream, true);
@@ -221,6 +281,7 @@ function toggleRecording() {
         isRecording = false;
         UI.setRecording(false);
     } else {
+        if (!devices.localStream.getTracks().length) { UI.showNotification('No local media to record. Enable a camera or microphone first.'); return; }
         // Just record local stream for this demo, or we could record a composite canvas
         devices.startRecording(devices.localStream);
         isRecording = true;

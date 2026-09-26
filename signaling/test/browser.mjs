@@ -7,7 +7,7 @@ import { join as joinPath } from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { chromium, firefox } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const socket = createServer().listen(0, '127.0.0.1');
 await once(socket, 'listening');
 const port = socket.address().port;
@@ -18,6 +18,7 @@ const server = spawn(process.execPath, ['src/server.js'], {
     stdio: ['ignore', 'pipe', 'inherit']
 });
 let browser;
+let firefoxBrowser;
 let nginx;
 let nginxDirectory;
 const errors = [];
@@ -80,9 +81,12 @@ http {
         headless: true,
         args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--no-sandbox']
     });
+    if (process.env.TEST_FIREFOX) firefoxBrowser = await firefox.launch({ headless: true });
     const pages = [];
-    async function join(name) {
-        const context = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    async function join(name, mode = 'devices', roomId = 'test123') {
+        const context = mode === 'denied' && firefoxBrowser
+            ? await firefoxBrowser.newContext()
+            : await browser.newContext({ permissions: ['camera', 'microphone'] });
         await context.addInitScript(() => {
             window.testPeers = [];
             const Original = window.RTCPeerConnection;
@@ -100,15 +104,22 @@ http {
                 return stream;
             };
         });
+        if (mode === 'denied') await context.addInitScript(() => {
+            navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); };
+        });
+        if (mode === 'pending') await context.addInitScript(() => {
+            navigator.mediaDevices.getUserMedia = () => new Promise(() => {});
+        });
         const page = await context.newPage();
         page.on('pageerror', error => errors.push(error.message));
-        await page.goto(url + '?room=test123');
+        await page.goto(url + '?room=' + roomId);
         await page.fill('#display-name', name);
-        assert.equal(await page.inputValue('#room-id'), 'test123');
+        assert.equal(await page.inputValue('#room-id'), roomId);
         await page.click('#btn-join-lobby');
         await page.waitForFunction(() => !document.getElementById('btn-join-room').disabled);
-        await page.click('#btn-join-room');
-        await page.waitForFunction(() => location.search.includes('room=test123') && document.querySelectorAll('#participants-list li').length > 0);
+        if (mode === 'devices') await page.waitForFunction(() => document.getElementById('local-preview-video').srcObject?.getTracks().length === 2);
+        await page.click(mode === 'pending' ? '#btn-join-without-devices' : '#btn-join-room');
+        await page.waitForFunction(() => document.querySelectorAll('#participants-list li').length > 0);
         pages.push(page);
         return page;
     }
@@ -148,11 +159,61 @@ http {
     await c.waitForFunction(() => document.querySelectorAll('.video-tile').length === 2);
     await b.click('#btn-join-lobby');
     await b.waitForFunction(() => !document.getElementById('btn-join-room').disabled);
+    await b.waitForFunction(() => document.getElementById('local-preview-video').srcObject?.getTracks().length === 2);
     await b.click('#btn-join-room');
     await media(2);
+    const guest = await join('Guest without devices', 'denied');
+    await guest.waitForFunction(async () => {
+        const pcs = window.testPeers;
+        if (pcs.length !== 3) return false;
+        for (const pc of pcs) {
+            const stats = [...(await pc.getStats()).values()];
+            if (!stats.some(s => s.type === 'inbound-rtp' && s.kind === 'video' && s.framesDecoded > 0)) return false;
+            if (!stats.some(s => s.type === 'inbound-rtp' && s.kind === 'audio' && s.bytesReceived > 0)) return false;
+            if (pc.getSenders().some(s => s.track)) return false;
+        }
+        return true;
+    });
+    assert.equal(await a.locator('#participants-list li').count(), 4);
+    const pending = await join('Pending permissions', 'pending');
+    await pending.waitForFunction(() => document.querySelectorAll('#participants-list li').length === 5);
+    // Same browser context, using the actual invitation URL shown to the user.
+    const tab = await a.context().newPage();
+    await tab.goto(await a.inputValue('#meeting-link'));
+    assert.equal(await tab.locator('#btn-new-meeting').isVisible(), false);
+    await tab.fill('#display-name', 'Second tab');
+    await tab.check('#join-as-viewer');
+    await tab.click('#btn-join-lobby');
+    await tab.click('#btn-join-without-devices');
+    await tab.waitForFunction(() => document.querySelectorAll('#participants-list li').length === 6);
+    await a.waitForFunction(() => document.querySelectorAll('#participants-list li').length === 6);
+    await tab.click('#btn-toggle-screen');
+    await tab.waitForFunction(() => window.testPeers.length === 5 && window.testPeers.every(pc => pc.getSenders().some(s => s.track === window.testScreenTrack)));
+    await tab.click('#btn-toggle-screen');
+    await tab.waitForFunction(() => window.testPeers.every(pc => pc.getSenders().every(s => !s.track)));
+    await tab.click('#btn-toggle-mic');
+    await tab.click('#btn-toggle-cam');
+    await tab.waitForFunction(() => window.testPeers.length === 5 && window.testPeers.every(pc => pc.getSenders().filter(s => s.track).length === 2));
+    await tab.close();
+    await pending.close();
+    await guest.close();
+    const firstViewer = await join('First viewer', 'denied', 'viewerfirst');
+    const teacher = await join('Teacher arrives later', 'devices', 'viewerfirst');
+    await firstViewer.waitForFunction(async () => {
+        const pc = window.testPeers[0];
+        if (!pc) return false;
+        const stats = [...(await pc.getStats()).values()];
+        return stats.some(s => s.type === 'inbound-rtp' && s.kind === 'video' && s.framesDecoded > 0)
+            && stats.some(s => s.type === 'inbound-rtp' && s.kind === 'audio' && s.bytesReceived > 0);
+    });
+    for (const button of await firstViewer.locator('.media-play:visible').all()) await button.click();
+    await firstViewer.waitForFunction(() => [...document.querySelectorAll('.video-tile:not(.local) video')].some(v => !v.paused && v.currentTime > 0));
+    await firstViewer.close();
+    await teacher.close();
     assert.deepEqual(errors, []);
-    console.log('PASS: three browsers exchange audio/video; screen share, late join, chat, leave/rejoin, Apps prefix and invitation URL' + (nginx ? ' through two nginx proxies' : ''));
+    console.log('PASS: denied/pending permissions, receive-only participants, same-context invitation tab, enable devices after joining; three browsers exchange audio/video; screen share, late join, chat, leave/rejoin, Apps prefix and invitation URL' + (nginx ? ' through two nginx proxies' : ''));
 } finally {
+    await firefoxBrowser?.close();
     await browser?.close();
     if (nginx && nginx.exitCode === null) { nginx.kill(); await once(nginx, 'exit'); }
     if (nginxDirectory) await rm(nginxDirectory, { recursive: true, force: true });

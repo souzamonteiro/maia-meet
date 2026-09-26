@@ -1,5 +1,9 @@
 # Running Maia Meet
 
+For the public **meet.maiaplatform.org** domain and the Apps catalog link, use
+[the node + VPS installation guide](VPS.md). `install-node.sh` is the preferred
+setup; `install-apps.sh` without `--dedicated` retains the legacy Apps subpath mode.
+
 ## Working application and experimental SFU
 
 The default application uses WebRTC mesh for small rooms (6 participants by
@@ -67,6 +71,36 @@ The TURN administrator chooses its listening ports and UDP relay range and opens
 those in the TURN host/provider firewall. Browser ephemeral media ports are chosen
 by the browser; `PORT` controls the Meet HTTP service, not those browser ports.
 Maia Edge proxies HTTP/WebSocket and does not carry WebRTC UDP media automatically.
+
+## Install on the existing Maia Apps node
+
+For the Apps template with a working HTTPS gateway and the existing `maia`
+service account, run as your normal user (the script prompts for sudo at activation):
+
+```bash
+bash deploy/install-apps.sh --port 3081
+```
+
+This installs a release under `/opt/maia-meet/releases/`, enables the
+`maia-meet-signaling` system service and adds only the Meet location to the
+existing Apps Nginx site. The expected URL is
+`https://apps.maiaplatform.org/maia-meet/`. It uses `/usr/bin/node` 22+.
+The existing Apps site is `/etc/nginx/sites-available/apps.maiaplatform.org.conf`;
+use `--site` and `--domain` for a different installation. Use `--prepare-only`
+to stage files/dependencies and print the activation command without changing
+system services. Dependency scripts are disabled and npm runs without sudo.
+
+The first installation copies ICE/TURN and room settings from the checkout `.env`
+(or `.env.example`); subsequent installations preserve `/etc/maia-meet/meet.env`.
+The installer sets the loopback host, selected port, `/maia-meet/` path and Apps
+origin. Nginx syntax and backend health are checked before reload. Backups live in
+`/var/backups/maia-meet/`; installation errors restore the previous files/release
+and prior service state. Existing releases are kept for rollback. Running the
+installer again publishes the current checkout, including uncommitted fixes.
+
+On each device, open the HTTPS address, create one meeting, and distribute its
+**Copy invite** link. Test on the same Wi-Fi first. Different networks may need
+TURN; installing this HTTP service does not install a TURN server.
 
 ## systemd
 
@@ -177,3 +211,26 @@ are `maia-reel/apps/editor/style.css` and the sibling Apps repository's
 When changing the shared media palette, update these local tokens as well.
 The lobby, device preview and room were checked at 1440px and 390px, including
 chat and meeting controls. The three-browser media test also passes with this UI.
+
+
+## Joining a class without devices
+
+Camera and microphone are optional. Select **Join without camera and microphone**
+in the lobby to avoid requesting device access, or choose **Join without camera /
+mic** in the preview. Denied, missing or busy devices do not block entry. A viewer
+can receive the other participants and use chat, then enable devices or share a
+screen during the meeting. If the browser blocks playback, use **Play audio and
+video** on the participant tile.
+
+Create a meeting once, then use **Copy invite** in the meeting header. Open that
+exact link in the other browser/tab, enter a different display name and choose
+**Join**. You can also paste the invitation link or room ID in the lobby. **New
+Meeting** creates a different room; opening the app homepage alone does not select
+another person's room. Invitation URLs are generated before device permissions,
+and the room ID remains visible throughout the call.
+
+The browser regression covers denied/pending permissions, viewers arriving before
+and after publishers, enabling devices and sharing a screen without a camera,
+and two tabs in the same browser context using the displayed invitation. Run with
+`TEST_FIREFOX=1` after installing Playwright Firefox to include a Firefox viewer
+receiving Chrome audio/video. The CI runs this through two Nginx proxies.

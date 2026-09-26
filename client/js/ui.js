@@ -25,6 +25,17 @@ export const UI = {
         nameLabel.textContent = displayName || participantId;
 
         tile.appendChild(video);
+        if (!isLocal) {
+            const play = document.createElement('button');
+            play.className = 'media-play';
+            play.textContent = 'Play audio and video';
+            play.hidden = true;
+            const startPlayback = () => video.play().catch(() => { play.hidden = false; });
+            video.addEventListener('loadedmetadata', startPlayback);
+            video.addEventListener('play', () => { play.hidden = true; });
+            play.addEventListener('click', startPlayback);
+            tile.appendChild(play);
+        }
         tile.appendChild(nameLabel);
         grid.appendChild(tile);
 

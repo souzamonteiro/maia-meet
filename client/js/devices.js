@@ -1,6 +1,7 @@
 export class DeviceManager {
     constructor() {
-        this.localStream = null;
+        this.localStream = new MediaStream();
+        this.captureVersion = 0;
         this.screenStream = null;
         this.audioContext = null;
         this.analyser = null;
@@ -12,11 +13,6 @@ export class DeviceManager {
 
     async enumerateDevices() {
         try {
-            // Request permissions first to get labels
-            await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(stream => {
-                stream.getTracks().forEach(t => t.stop());
-            }).catch(() => {});
-
             const devices = await navigator.mediaDevices.enumerateDevices();
             const cameras = devices.filter(d => d.kind === 'videoinput');
             const microphones = devices.filter(d => d.kind === 'audioinput');
@@ -28,17 +24,32 @@ export class DeviceManager {
         }
     }
 
-    async getLocalStream(constraints = { audio: true, video: true }) {
-        if (this.localStream) {
-            this.localStream.getTracks().forEach(track => track.stop());
+    async getLocalStream() {
+        const version = ++this.captureVersion;
+        const results = await Promise.allSettled(['audio', 'video'].map(kind =>
+            navigator.mediaDevices.getUserMedia({ [kind]: true })));
+        for (const result of results) {
+            if (result.status !== 'fulfilled') continue;
+            for (const track of result.value.getTracks()) {
+                if (version !== this.captureVersion) track.stop();
+                else this.localStream.addTrack(track);
+            }
         }
-        try {
-            this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            return this.localStream;
-        } catch (err) {
-            console.error('Error getting local stream:', err);
-            throw err;
+        return this.localStream;
+    }
+
+    cancelPendingCapture() { this.captureVersion++; }
+
+    async acquireTrack(kind) {
+        const version = this.captureVersion;
+        const stream = await navigator.mediaDevices.getUserMedia({ [kind]: true });
+        if (version !== this.captureVersion) {
+            stream.getTracks().forEach(track => track.stop());
+            throw new Error('Device request cancelled');
         }
+        const track = stream.getTracks()[0];
+        this.localStream.addTrack(track);
+        return track;
     }
 
     async setCamera(deviceId) {
@@ -83,9 +94,10 @@ export class DeviceManager {
     }
 
     stopLocalPreview() {
+        this.cancelPendingCapture();
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => track.stop());
-            this.localStream = null;
+            this.localStream = new MediaStream();
         }
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);

@@ -25,7 +25,7 @@ export class WebRtcSession {
         const pc = new RTCPeerConnection(this.config);
         const peer = { pc, candidates: [], stream: new MediaStream() };
         this.peers.set(id, peer);
-        for (const track of this.localStream?.getTracks() || []) pc.addTrack(track, this.localStream);
+
         pc.onicecandidate = ({ candidate }) => {
             if (candidate && !this.closed) this.signaling.send('webrtc.iceCandidate', { targetId: id, ...candidate.toJSON() });
         };
@@ -51,6 +51,10 @@ export class WebRtcSession {
         this.localStream = localStream;
         await Promise.all(participants.map(p => this.enqueue(p.id, async () => {
             const { pc } = this.peer(p.id);
+            for (const kind of ['audio', 'video']) {
+                const track = this.localStream.getTracks().find(t => t.kind === kind);
+                pc.addTransceiver(track || kind, { direction: 'sendrecv', streams: [this.localStream] });
+            }
             await pc.setLocalDescription(await pc.createOffer());
             this.signaling.send('webrtc.offer', { targetId: p.id, sdp: pc.localDescription.sdp });
         })));
@@ -68,15 +72,22 @@ export class WebRtcSession {
         await pc.setRemoteDescription({ type: type === 'webrtc.offer' ? 'offer' : 'answer', sdp: payload.sdp });
         for (const candidate of peer.candidates.splice(0)) await pc.addIceCandidate(candidate);
         if (type === 'webrtc.offer') {
+            for (const transceiver of pc.getTransceivers()) {
+                const kind = transceiver.receiver.track.kind;
+                const track = this.localStream.getTracks().find(t => t.kind === kind);
+                await transceiver.sender.replaceTrack(track || null);
+                transceiver.direction = 'sendrecv';
+            }
             await pc.setLocalDescription(await pc.createAnswer());
             this.signaling.send('webrtc.answer', { targetId: payload.participantId, sdp: pc.localDescription.sdp });
         }
     }
 
     async replaceTrack(oldTrack, newTrack) {
+        const kind = newTrack?.kind || oldTrack?.kind;
         await Promise.all([...this.peers.values()].map(async ({ pc }) => {
-            const sender = pc.getSenders().find(s => s.track === oldTrack);
-            if (sender) await sender.replaceTrack(newTrack);
+            const sender = pc.getTransceivers().find(t => t.receiver.track.kind === kind)?.sender;
+            if (sender) await sender.replaceTrack(newTrack || null);
         }));
         // Newcomers must receive the currently published track too.
         if (this.localStream && oldTrack) this.localStream.removeTrack(oldTrack);

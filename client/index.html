@@ -23,18 +23,19 @@
             <div class="lobby-card">
                 <p class="eyebrow">YOUR MEETING SPACE</p>
                 <h1>Let’s meet.</h1>
-                <p class="description">Start a conversation or join your team with a room ID.</p>
+                <p id="lobby-description" class="description">Start a conversation or join your team with a room ID.</p>
                 <div class="form-group">
                     <label for="display-name">Display Name</label>
                     <input type="text" id="display-name" placeholder="Enter your name" maxlength="50" autocomplete="name" />
                 </div>
+                <label class="viewer-option"><input id="join-as-viewer" type="checkbox"> Join without camera and microphone</label>
                 <div class="form-actions">
                     <button id="btn-new-meeting" class="btn-primary">New Meeting</button>
                 </div>
                 <div class="divider"><span>OR</span></div>
                 <div class="form-group">
                     <label for="room-id">Room ID</label>
-                    <input type="text" id="room-id" placeholder="Enter Room ID" maxlength="32" autocomplete="off" spellcheck="false" />
+                    <input type="text" id="room-id" placeholder="Room ID or invitation link" autocomplete="off" spellcheck="false" />
                 </div>
                 <div class="form-actions">
                     <button id="btn-join-lobby" class="btn-secondary">Join</button>
@@ -47,7 +48,7 @@
             <div class="preview-container">
                 <p class="eyebrow">CAMERA &amp; AUDIO</p>
                 <h2>Ready to join?</h2>
-                <p class="description">Check your camera and microphone before entering the room.</p>
+                <p id="device-status" class="description" role="status">Camera and microphone are optional.</p>
                 <div class="video-preview-wrapper">
                     <video id="local-preview-video" autoplay muted playsinline></video>
                     <div class="audio-level-indicator">
@@ -70,6 +71,7 @@
                 </div>
                 <div class="preview-actions-main">
                     <button id="btn-back-preview" class="btn-secondary">Back</button>
+                    <button id="btn-join-without-devices" class="btn-secondary">Join without camera / mic</button>
                     <button id="btn-join-room" class="btn-primary">Join Room</button>
                 </div>
             </div>
@@ -79,6 +81,11 @@
         <div id="view-room" class="view">
             <div class="room-layout">
                 <div class="main-content">
+                    <div class="meeting-info">
+                        <label for="meeting-link">Meeting <strong id="meeting-room-id"></strong></label>
+                        <input id="meeting-link" readonly aria-label="Invitation link">
+                        <button id="btn-copy-invite">Copy invite</button>
+                    </div>
                     <div id="video-grid" class="video-grid">
                         <!-- Video tiles go here -->
                     </div>

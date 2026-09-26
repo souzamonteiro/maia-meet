@@ -7,7 +7,8 @@
     "start": "node --env-file-if-exists=../.env src/server.js",
     "dev": "node --env-file-if-exists=../.env --watch src/server.js",
     "test": "node --test test/*.test.js",
-    "test:browser": "node test/browser.mjs"
+    "test:browser": "node test/browser.mjs",
+    "test:deployment": "node test/deployment.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"
