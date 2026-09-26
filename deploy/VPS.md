@@ -121,3 +121,31 @@ Local regression: `node signaling/test/deployment.mjs` runs the generated VPS
 HTTPS config in an isolated Nginx, verifies the HTTP redirect, assets and WSS room
 join. It does not issue a real certificate, modify live services or certify
 connectivity/firewalls on the real VPS.
+
+## VPS timeout reaching the application node
+
+Run the read-only diagnostic on the VPS before installation (no sudo required):
+
+```bash
+bash install-vps.sh --check-upstream --upstream 10.77.0.2:3181
+```
+
+A timeout is a network/backend reachability failure, not a certificate failure.
+If the service responds locally on the node but not from the VPS, inspect the
+node's kernel log for `UFW BLOCK`, the VPS source address and `DPT=3181`.
+For this deployment (`wg0`, VPS `10.77.0.1`, node `10.77.0.2`), run **on the node**:
+
+```bash
+sudo ufw allow in on wg0 proto tcp from 10.77.0.1 to 10.77.0.2 port 3181
+```
+
+Then retry the diagnostic or `curl --noproxy '*' --fail --max-time 10
+http://10.77.0.2:3181/health` on the VPS. Only after it returns healthy should you
+rerun the VPS installation. Do not disable the firewall or expose the node port
+on its public/LAN interfaces. For another VPN, use its actual interface and IPs.
+
+`conflicting server name` warnings for other domains indicate existing duplicate
+Nginx vhosts. They are separate from a backend timeout when `nginx -t` reports
+success. Inspect those sites separately before removing or changing any file.
+The installer checks connectivity before asking for the certificate email and
+reports backend failure without a Python traceback or configuration changes.

@@ -114,3 +114,5 @@ jobs:
 
       - run: npm run test:deployment
         working-directory: signaling
+
+      - run: python3 tests/vps-preflight.py

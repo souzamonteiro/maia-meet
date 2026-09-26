@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import ipaddress
+import json
 import os
 from pathlib import Path
 import re
@@ -17,7 +18,11 @@ parser.add_argument('--email', help='ACME contact; prompted on first issuance if
 parser.add_argument('--cert', type=Path)
 parser.add_argument('--key', type=Path)
 parser.add_argument('--dry-run', action='store_true')
+parser.add_argument('--check-upstream', action='store_true', help='Check VPN/backend connectivity only; no sudo or changes')
+parser.add_argument('--timeout', type=float, default=10, help='Backend check timeout in seconds (0 < timeout <= 60)')
 args = parser.parse_args()
+if not 0 < args.timeout <= 60:
+    parser.error('--timeout must be greater than zero and at most 60 seconds')
 if not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?', args.domain):
     parser.error('Invalid domain')
 try:
@@ -78,21 +83,39 @@ if args.dry_run:
     print(http + https)
     print(f'# Backend health required: http://{args.upstream}/health')
     raise SystemExit(0)
+def check_upstream():
+    url = f'http://{args.upstream}/health'
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(url, timeout=args.timeout) as response:
+            body = json.loads(response.read(65536))
+            if response.status != 200 or not isinstance(body, dict) or body.get('status') != 'ok' or body.get('mediaMode') != 'mesh':
+                raise ValueError('The endpoint is not a healthy Maia Meet mesh service')
+    except (OSError, ValueError) as error:
+        print(f'Backend check failed: {url}', file=sys.stderr)
+        print(f'Reason: {error}', file=sys.stderr)
+        print('No nginx, certificate or VPN configuration was changed.', file=sys.stderr)
+        print(f'On the VPS: ip route get {host}', file=sys.stderr)
+        print(f'On the application machine: curl --noproxy "*" --max-time 5 {url}', file=sys.stderr)
+        print('If local health works but the VPS times out, inspect the node firewall:', file=sys.stderr)
+        print('  sudo ufw status verbose', file=sys.stderr)
+        print(f'  sudo journalctl -k --since "10 minutes ago" --no-pager -g "DPT={port}"', file=sys.stderr)
+        print('Allow only the VPS VPN address to this TCP port on the existing VPN interface.', file=sys.stderr)
+        return False
+    print(f'Backend ready: {url}', flush=True)
+    return True
+
+
+if args.check_upstream:
+    raise SystemExit(0 if check_upstream() else 1)
 if os.geteuid() != 0:
     parser.error('Run on the VPS with sudo, or use --dry-run locally')
 for tool in ['nginx', 'systemctl', 'openssl']:
     if not shutil.which(tool):
         raise RuntimeError(f'Missing {tool}; install nginx, openssl and certbot on the VPS first')
-needs_certificate = not (cert.is_file() and key.is_file())
-if needs_certificate:
-    if custom_cert:
-        parser.error('Custom certificate/key files must already exist')
-    if not shutil.which('certbot'):
-        raise RuntimeError('Install certbot first: sudo apt-get install certbot')
-    if not args.email and sys.stdin.isatty():
-        args.email = input('Email for the HTTPS certificate (Let\'s Encrypt): ').strip()
-    if not args.email or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', args.email):
-        parser.error('First certificate issuance requires --email you@example.com')
+# Check connectivity before requesting an email or invoking nginx/certbot.
+if not check_upstream():
+    raise SystemExit(1)
 
 
 def run(*command, **kwargs):
@@ -104,6 +127,7 @@ def reload_nginx():
     run('systemctl', 'reload', 'nginx')
 
 
+print('Checking existing nginx configuration; warnings below precede Meet installation.', flush=True)
 run('nginx', '-t')
 configuration = run('nginx', '-T', capture_output=True, text=True).stdout
 if not re.search(r'include\s+/etc/nginx/sites-enabled/\*', configuration):
@@ -122,16 +146,17 @@ if site.exists() and marker not in site.read_text():
 if link.exists() or link.is_symlink():
     if not link.is_symlink() or link.resolve() != site.resolve():
         raise RuntimeError(f'Refusing to replace {link}')
-# Fail before changing nginx if the on-premises service/VPN/firewall is not ready.
-opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-try:
-    with opener.open(f'http://{args.upstream}/health', timeout=10) as response:
-        import json
-        body = json.load(response)
-        if response.status != 200 or body.get('mediaMode') != 'mesh':
-            raise RuntimeError('Upstream is not the Maia Meet service')
-except OSError as error:
-    raise RuntimeError(f'Cannot reach http://{args.upstream}/health. Install the node and check the VPN/firewall first.') from error
+needs_certificate = not (cert.is_file() and key.is_file())
+if needs_certificate:
+    if custom_cert:
+        parser.error('Custom certificate/key files must already exist')
+    if not shutil.which('certbot'):
+        raise RuntimeError('Install certbot first: sudo apt-get install certbot')
+    if not args.email and sys.stdin.isatty():
+        args.email = input('Email for the HTTPS certificate (Let\'s Encrypt): ').strip()
+    if not args.email or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', args.email):
+        parser.error('First certificate issuance requires --email you@example.com')
+
 
 stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
 backup = Path('/var/backups/maia-meet-vps') / stamp
